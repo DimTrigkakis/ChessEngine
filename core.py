@@ -72,7 +72,6 @@ class Core():
         # and where it is placed
         master.geometry('%dx%d+%d+%d' % (self.w, self.h, x, y))
 
-
         master.mainloop()
 
 Core().main()
