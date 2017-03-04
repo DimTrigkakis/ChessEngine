@@ -7,6 +7,7 @@ import random
 class Core():
 
     myCanvas = None
+    trueBoard = None
     w,h = 600,600
     border = 5
     border_width = 20
@@ -20,15 +21,16 @@ class Core():
     def canvas_coordinates(self,i,j):
         return i+self.coord[0]+self.size/2+(self.size-1)*i,j+self.coord[1]+self.size/2+(self.size-1)*j
 
-    def draw_board(self,board):
+    def draw_board(self):
 
+        self.myCanvas.delete("all")
         self.myCanvas.create_rectangle(self.border_width-2.5*self.border, self.border_width-2.5*self.border, 600-self.border_width, 600-self.border_width, fill="black")
 
         colors = ["#ba8146","#eec59b"]
         for g in range(64):
             self.myCanvas.create_rectangle(self.coord[0]+self.size*(g%8),self.coord[1]+self.size*(g/8),self.coord[0]+self.size*(g%8+1),self.coord[1]+self.size*(g/8+1),fill=colors[(g%8+g/8) % 2])
 
-        position = board.board_fen()
+        position = self.trueBoard.board_fen()
         k = 0
         for i,p in enumerate(position):
             if p != "/" and not p.isdigit():
@@ -39,12 +41,20 @@ class Core():
                     k += int(p)
                 continue
 
+        self.myCanvas.after(5,self.draw_board)
+
+    def play(self):
+        # one move
+
+        for move in self.trueBoard.legal_moves:
+            if random.random() < 0.1:
+                self.trueBoard.push_uci(str(move))
+                break
+        self.myCanvas.after(1,self.play)
     def main(self):
 
         aboard = chess.Board()
-        aboard.push_san("e4")
-        aboard.push_san("e5")
-
+        self.trueBoard = aboard
         # Initialize pieces
 
         master = Tkinter.Tk()
@@ -58,7 +68,7 @@ class Core():
 
         self.myCanvas = Tkinter.Canvas(frame, width=self.w,height=self.h)
         self.myCanvas.pack()
-        self.draw_board(aboard)
+        self.draw_board()
 
         # get screen width and height
         ws = master.winfo_screenwidth() # width of the screen
@@ -71,6 +81,10 @@ class Core():
         # set the dimensions of the screen
         # and where it is placed
         master.geometry('%dx%d+%d+%d' % (self.w, self.h, x, y))
+
+
+        move_length = len(aboard.legal_moves)
+        self.play()
 
         master.mainloop()
 
