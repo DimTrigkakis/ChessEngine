@@ -20,9 +20,9 @@ class Core():
 
     coord = [2.5*border,2.5*border]
     size = (600.0-38)/8
-    timer = 50
-    move_timer = 1000
-    max_depth = 1
+    timer = 5
+    move_timer = 20
+    max_depth = 2
 
     def canvas_coordinates(self,i,j):
         return i+self.coord[0]+self.size/2+(self.size-1)*i,j+self.coord[1]+self.size/2+(self.size-1)*j
@@ -57,24 +57,13 @@ class Core():
             return 5
         return 9
 
-    def evaluate(self,board,move=None):
-
-        if move!=None:
-            board.push_uci(str(move))
-
-        evaluation = 0
-        for piece_type in chess.PIECE_TYPES:
-            evaluation += len(board.pieces(piece_type,chess.WHITE))*self.value(piece_type)-len(board.pieces(piece_type,chess.BLACK))*self.value(piece_type)
-
-        if move!=None:
-            board.pop()
-
-        return evaluation
-
-    def play(self, someBoard, depth = 0,alpha = -2000,beta = +2000): # Assume both players
-        # one move
+    value_type = [0, 1, 3, 3, 5, 9]
+    piece_types = [1, 2, 3, 4, 5]
+    def play(self, someBoard, depth = 0,alpha = -2000,beta = +2000): # Returns ((move eval, move),alpha, beta)
         turn = someBoard.turn
         legal_moves = someBoard.legal_moves
+        my_moves = list(legal_moves)
+        random.shuffle(my_moves)
 
         # If this is the first move we are asked to make, use the book
         if depth == 0:
@@ -90,6 +79,8 @@ class Core():
                         move = entry.move
                 if move != None:
                     return ((0,move),alpha,beta)
+
+        # If this condition hits, we can end the game
         cond = someBoard.can_claim_threefold_repetition() or someBoard.can_claim_fifty_moves() or someBoard.is_stalemate() or someBoard.is_insufficient_material()
         if cond:
             return ((0, None), alpha, beta)
@@ -98,88 +89,65 @@ class Core():
                 return ((-1000, None), alpha, beta)
             return ((1000, None), alpha, beta)
 
+        possible_moves = []
         if depth == self.max_depth:
             if turn:
-                #if (alpha > beta):
-                #    return ((-1000,None),alpha,beta)
-                possible_moves = []
-                for move in legal_moves:
-                    '''if alpha >= beta:
-                        #print alpha,beta
-
-                        continue'''
-                    value_init = self.evaluate(someBoard)
-                    value = self.evaluate(someBoard,move)
-
-                    if value-value_init != 0:
-                        print "actual minimove", move, "absolute value",value,"value-diff",value-value_init
+                for move in my_moves:
+                    if alpha >= beta:
+                        return ((1000,None),alpha,beta)
+                    someBoard.push_uci(str(move))
+                    value = sum([(len(someBoard.pieces(piece_type,True))-len(someBoard.pieces(piece_type,False)))*self.value_type[piece_type] for piece_type in self.piece_types])
+                    someBoard.pop()
                     if value > alpha:
                         alpha = value
-                    possible_moves.append((self.evaluate(someBoard,move),move))
+                    possible_moves.append((value,move))
                 best_move = max(possible_moves)
             else:
-                #if (alpha > beta):
-                #    return ((1000,None),alpha,beta)
-                possible_moves = []
-                for move in legal_moves:
-                    '''if alpha >= beta:
-                        #print alpha,beta
-                        continue'''
-                    value_init = self.evaluate(someBoard)
-                    value = self.evaluate(someBoard,move)
-
-                    if value-value_init != 0:
-                        print "actual minimove", move, value, value-value_init
+                for move in my_moves:
+                    if alpha >= beta:
+                        return ((-1000,None),alpha,beta)
+                    someBoard.push_uci(str(move))
+                    value = sum([(len(someBoard.pieces(piece_type,True))-len(someBoard.pieces(piece_type,False)))*self.value_type[piece_type] for piece_type in self.piece_types])
+                    someBoard.pop()
                     if value < beta:
                         beta = value
-                    possible_moves.append((self.evaluate(someBoard,move),move))
+                    possible_moves.append((value,move))
                 best_move = min(possible_moves)
-            print "returning",alpha,beta
             return (best_move,alpha,beta)
         else:
-            my_moves = list(legal_moves)
-            random.shuffle(my_moves)
-            best_moves = []
-
             for move in my_moves:
                 someBoard.push_uci(str(move))
-                '''if str(move) != "e7g5":
-                    someBoard.pop()
-                    continue'''
+                next_move = self.play(someBoard,depth+1,alpha,beta)
 
-                print "For move",move
-                if turn:
-                    next_move = self.play(someBoard,depth+1,alpha,beta)
-                else:
-                    next_move = self.play(someBoard,depth+1,alpha,beta)
-                    print next_move, move
                 value = next_move[0][0]
                 if turn:
-                    print value, alpha, beta
                     if value > alpha:
                         alpha = value
-                    print value, alpha, beta
                 else:
-                    print value, alpha, beta
                     if value < beta:
                         beta = value
-                    print value, alpha, beta
-                if alpha >= beta:
-                    print "PRUNED"
-                    #someBoard.pop()
-                    #continue
-                best_moves.append((next_move[0],move))
+
+                if turn:
+                    if alpha >= beta:
+                        someBoard.pop()
+                        return ((1000, None), alpha, beta)
+                else:
+                    if alpha >= beta:
+                        someBoard.pop()
+                        return ((-1000, None), alpha, beta)
+
+                possible_moves.append((value,move))
                 someBoard.pop()
+
             if turn:
-                return (max(best_moves),alpha,beta)
-            return (min(best_moves),alpha,beta)
+                return (max(possible_moves),alpha,beta)
+            return (min(possible_moves),alpha,beta)
 
     def play_move(self,initBoard):
 
         cond = initBoard.can_claim_threefold_repetition() or initBoard.can_claim_fifty_moves() or initBoard.is_stalemate() or initBoard.is_insufficient_material()
         if cond:
             print "DRAW"
-
         move = self.play(initBoard)[0]
         if cond:
             print "DRAW"
@@ -189,20 +157,16 @@ class Core():
             else:
                 print "BLACK WAS CHECKMATED"
         else:
-            print move
             initBoard.push_uci(str(move[1]))
             self.myCanvas.after(self.move_timer, self.play_move, initBoard)
-            import time
 
+    def pause(self, event):
+        import time
+        time.sleep(10000)
     def main(self):
-
 
         random.seed(116)
         aboard = chess.Board()
-        aboard.set_fen("r1bqk2r/pppp1ppp/2n2n2/1B2p3/8/bP2P3/PBPP1PPP/R2QK1NR w KQkq - 0 6")
-        aboard.push_uci("b2a3")
-        aboard.push_uci("c6a5")
-        aboard.push_uci("b3b4")
         self.trueBoard = aboard
         # Initialize pieces
 
@@ -218,6 +182,7 @@ class Core():
         self.myCanvas = Tkinter.Canvas(frame, width=self.w,height=self.h)
         self.myCanvas.pack()
         self.myCanvas.after(self.timer,self.draw_board)
+        self.myCanvas.bind("<Button-1>", self.pause)
 
         # get screen width and height
         ws = master.winfo_screenwidth() # width of the screen
