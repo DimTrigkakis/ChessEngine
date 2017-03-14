@@ -318,8 +318,6 @@ class Core():
     # F) Deal with trap states, from the paper that you will read
 
     def print_tree(self,tree_root):
-        if tree_root == self.monte_carlo_tree_root[0]:
-            print "TREE PRINT"
         print tree_root
         for child in tree_root[1]:
             print "\t",
@@ -328,7 +326,6 @@ class Core():
 
 
     def select_node(self,someBoard,node,jpop=0):
-        print "CALL", node
         if node[3] == 0:
             return node
         for child in node[1]:
@@ -338,7 +335,6 @@ class Core():
         result = node
         for child in node[1]:
                 new_score = child[2]+math.sqrt(2*math.log(child[3])/(1.0*node[3]))
-                print new_score
                 if new_score > score:
                     score = new_score
                     result = child
@@ -346,9 +342,9 @@ class Core():
 
 
     def NOTFULLYEXPANDED(self,node,someBoard):
-        if len(node[1]) < len(node[5]):
-            return True
-        return False
+        if len(node[5]) == 0:
+            return False
+        return True
 
     def NONTERMINAL(self,someBoard):
         cond = someBoard.is_seventyfive_moves() or someBoard.is_fivefold_repetition() or someBoard.is_stalemate() or someBoard.is_insufficient_material()
@@ -362,10 +358,8 @@ class Core():
     def EXPAND(self,node,someBoard):
         action = random.choice(node[5])
         node[5].remove(action)
-        someBoard.push_uci(str(action))
         child = [action,[],0,0,node,list(someBoard.generate_legal_moves())]
         node[1].append(child)
-        someBoard.pop()
 
         return child
 
@@ -374,29 +368,51 @@ class Core():
         children = [(child[2]-c*math.sqrt(2*math.log(child[3])/(1.0*node[3])),child) for child in node[1]]
         return max(children)[1]
 
-    def DEFAULTPOLICY(self,someBoard):
+    def DEFAULTPOLICY(self,someBoard,maximizer=True): # Most simulations end up at 0.5
+        # Let's fix that
         counter = 0
-        while self.NONTERMINAL(someBoard):
+        '''while self.NONTERMINAL(someBoard):
             actions = list(someBoard.generate_legal_moves())
             action = random.choice(actions)
             someBoard.push_uci(str(action))
-            counter += 1
+            counter += 1'''
+
+        j_choice = random.randint(5,30) # 5/10, 2/4
+        value_add = 0
+        for j in range(j_choice):
+            for i in range(random.randint(2,4)):
+                actions = list(someBoard.generate_legal_moves())
+                if actions != []:
+                    action = random.choice(actions)
+                    someBoard.push_uci(str(action))
+                    counter += 1
+            if maximizer:
+                value_add += self.evaluate_complex(someBoard)
+            else:
+                value_add -= self.evaluate_complex(someBoard)
+            for k in range(counter):
+                someBoard.pop()
+            counter = 0
+        value_add /= j_choice
+
+
+        '''if not maximizer:
+            value_add *= -1'''
+        if value_add > 100:
+            return 1,counter
+        if value_add < -100:
+            return 0,counter
+        return 1/(1.0+math.exp(-value_add)),counter
 
         cond = someBoard.is_seventyfive_moves() or someBoard.is_fivefold_repetition() or someBoard.is_stalemate() or someBoard.is_insufficient_material()
         if cond:
-            for i in range(counter):
-                someBoard.pop()
-            return 0.5
+            return 0.5, counter
 
         if someBoard.is_game_over():
             if someBoard.turn: #white was checkmated
-                for i in range(counter):
-                    someBoard.pop()
-                return 0
+                return 0, counter
             else:
-                for i in range(counter):
-                    someBoard.pop()
-                return 1
+                return 1, counter
 
     def BACKUP(self,node,D):
         while node is not None:
@@ -409,15 +425,26 @@ class Core():
         print str(object)
     def TREEPOLICY(self,node,someBoard):
 
+        move_counter = 0
         while self.NONTERMINAL(someBoard):
             if self.NOTFULLYEXPANDED(node,someBoard):
-                return self.EXPAND(node,someBoard)
+                node = self.EXPAND(node,someBoard)
+                someBoard.push_uci(str(node[0]))
+                move_counter += 1
+                return node, move_counter
             else:
                 node = self.BESTCHILD(node,math.sqrt(2))
-                someBoard.push_uci(str(node[0]))
-        return node
+        return node, move_counter
 
 
+    def count_tree(self,node):
+        print 1,
+        if len(node[1]) > 0:
+            print "[",
+        for n in node[1]:
+            self.count_tree(n)
+        if len(node[1]) > 0:
+            print "]",
     def play_mc(self, someBoard):
         turn = someBoard.turn
         starting_node = [None,[],0,0,None,list(someBoard.generate_legal_moves())] # move, children, successes, tries, parent, untried_actions
@@ -425,15 +452,18 @@ class Core():
         time_start = time.time()
         simulate = 0
 
-        while time_start - time.time() > -10:
+        maximizer = someBoard.turn
+        while time_start - time.time() > -3:
 
             simulate += 1
-            node = self.TREEPOLICY(starting_node,someBoard)
-            D = self.DEFAULTPOLICY(someBoard)
+            node, counter = self.TREEPOLICY(starting_node,someBoard)
+            D, counter2 = self.DEFAULTPOLICY(someBoard,maximizer=maximizer)
             self.BACKUP(node,D)
+            for i in range(counter+counter2):
+                someBoard.pop()
 
-        print "OMG",starting_node
-        print "OMG2",self.BESTCHILD(starting_node,0)
+        self.count_tree(starting_node)
+
         return self.BESTCHILD(starting_node,0)[0]
 
     '''
